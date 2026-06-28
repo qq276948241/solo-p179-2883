@@ -23,6 +23,19 @@ function directionName(dir) {
   return map[dir] || dir;
 }
 
+function mpBarShort() {
+  const ratio = player.mp / player.maxMp;
+  const length = 10;
+  const filled = Math.floor(ratio * length);
+  const empty = length - filled;
+  const bar = '█'.repeat(filled) + '░'.repeat(empty);
+  let color;
+  if (ratio <= 0.3) color = ui.colors.fg.brightMagenta;
+  else if (ratio <= 0.6) color = ui.colors.fg.brightBlue;
+  else color = ui.colors.fg.brightCyan;
+  return `${ui.c('MP:', ui.colors.fg.white)}[${ui.c(bar, color)}]${player.mp}/${player.maxMp}`;
+}
+
 function renderScreen(bodyCallback) {
   ui.clearScreen();
 
@@ -33,6 +46,11 @@ function renderScreen(bodyCallback) {
   );
   headerLines.push(
     ui.pad(ui.system('  文字冒险 RPG'), SCREEN_WIDTH) +
+    ui.pad(mpBarShort(), SCREEN_WIDTH)
+  );
+  const expTag = `${ui.c(`Lv.${player.level}`, ui.colors.fg.brightYellow)}  EXP:${player.exp}/${player.expToNext}`;
+  headerLines.push(
+    ui.pad(`  ${expTag}`, SCREEN_WIDTH) +
     ui.pad(`  金币: ${ui.gold(player.gold)}  攻: ${player.totalAttack()}  防: ${player.totalDefense()}`, SCREEN_WIDTH)
   );
   headerLines.push(ui.divider(SCREEN_WIDTH * 2, '═'));
@@ -202,6 +220,41 @@ function renderDeath() {
   });
 }
 
+function renderLevelUp(levels, afterCb) {
+  const lastLv = levels[levels.length - 1];
+  const learnedSkill = lastLv >= 5 && levels.some(l => l === 5);
+  renderScreen(() => {
+    const lines = [
+      '',
+      '',
+      ui.center(ui.c('╔══════════════════════════════════════╗', ui.colors.fg.brightYellow), SCREEN_WIDTH * 2),
+      ui.center(ui.c('║                                      ║', ui.colors.fg.brightYellow), SCREEN_WIDTH * 2),
+      ui.center(ui.c('║  ') + ui.c('★ ★  等 级 提 升  ★ ★', ui.colors.fg.brightYellow + ui.colors.bright) + ui.c('  ║', ui.colors.fg.brightYellow), SCREEN_WIDTH * 2),
+      ui.center(ui.c('║                                      ║', ui.colors.fg.brightYellow), SCREEN_WIDTH * 2),
+      ui.center(ui.c('╚══════════════════════════════════════╝', ui.colors.fg.brightYellow), SCREEN_WIDTH * 2),
+      '',
+      ui.center(ui.c(`恭喜你升到了 Lv.${lastLv}！`, ui.colors.fg.brightYellow), SCREEN_WIDTH * 2),
+      '',
+      ui.center(ui.system('最大生命 +20   最大魔力 +10'), SCREEN_WIDTH * 2),
+      ui.center(ui.system('基础攻击 +2   基础防御 +1'), SCREEN_WIDTH * 2),
+      ui.center(ui.system('HP / MP 已完全恢复！'), SCREEN_WIDTH * 2),
+    ];
+    if (learnedSkill) {
+      lines.push('');
+      lines.push(ui.center(ui.c('★ 你学会了三个新技能！', ui.colors.fg.brightMagenta), SCREEN_WIDTH * 2));
+      lines.push(ui.center(ui.c('  火球术 · 治疗术 · 破甲斩', ui.colors.fg.brightMagenta), SCREEN_WIDTH * 2));
+      lines.push(ui.center(ui.system('战斗中按 [5] 打开技能菜单'), SCREEN_WIDTH * 2));
+    }
+    lines.push('');
+    lines.push('');
+    lines.push('  按任意键继续...');
+    process.stdout.write(lines.join('\n'));
+  });
+  rl.question('', () => {
+    afterCb && afterCb();
+  });
+}
+
 function triggerEncounter(room) {
   if (!room.encounters || room.encounters.length === 0) return false;
 
@@ -217,9 +270,17 @@ function triggerEncounter(room) {
     inBattle = false;
     if (result.died) {
       handleDeath();
-    } else {
-      promptMain();
+      return;
     }
+    if (result.victory && result.exp > 0) {
+      const levels = player.gainExp(result.exp);
+      if (levels.length > 0) {
+        statusMessage = `升级到 Lv.${levels[levels.length - 1]}！HP/MP 全满。`;
+        renderLevelUp(levels, () => promptMain());
+        return;
+      }
+    }
+    promptMain();
   });
 
   return true;

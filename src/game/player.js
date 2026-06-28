@@ -1,9 +1,40 @@
 const { items } = require('../data/items');
 
+const SKILLS = {
+  fireball: {
+    id: 'fireball',
+    name: '火球术',
+    mpCost: 5,
+    minLevel: 5,
+    desc: '消耗 5 MP，对敌人造成 1.5 倍攻击力的火焰伤害。'
+  },
+  heal: {
+    id: 'heal',
+    name: '治疗术',
+    mpCost: 3,
+    minLevel: 5,
+    healAmount: 20,
+    desc: '消耗 3 MP，立即恢复 20 HP。'
+  },
+  armorBreak: {
+    id: 'armorBreak',
+    name: '破甲斩',
+    mpCost: 4,
+    minLevel: 5,
+    duration: 2,
+    desc: '消耗 4 MP，让敌人防御减半，效果持续 2 回合。'
+  }
+};
+
 class Player {
   constructor() {
+    this.level = 1;
+    this.exp = 0;
+    this.expToNext = 50;
     this.hp = 100;
     this.maxHp = 100;
+    this.mp = 50;
+    this.maxMp = 50;
     this.baseAttack = 10;
     this.baseDefense = 2;
     this.gold = 50;
@@ -16,6 +47,44 @@ class Player {
       weapon: null,
       shield: null
     };
+  }
+
+  static expForLevel(lv) {
+    return Math.floor(50 * Math.pow(1.35, lv - 1));
+  }
+
+  getAvailableSkills() {
+    if (this.level < 5) return [];
+    return Object.values(SKILLS);
+  }
+
+  hasSkill(skillId) {
+    return this.level >= 5 && !!SKILLS[skillId];
+  }
+
+  useMp(amount) {
+    if (this.mp < amount) return false;
+    this.mp -= amount;
+    return true;
+  }
+
+  gainExp(amount) {
+    const leveledUp = [];
+    this.exp += amount;
+
+    while (this.exp >= this.expToNext) {
+      this.exp -= this.expToNext;
+      this.level += 1;
+      this.maxHp += 20;
+      this.maxMp += 10;
+      this.baseAttack += 2;
+      this.baseDefense += 1;
+      this.hp = this.maxHp;
+      this.mp = this.maxMp;
+      this.expToNext = Player.expForLevel(this.level);
+      leveledUp.push(this.level);
+    }
+    return leveledUp;
   }
 
   totalAttack() {
@@ -81,11 +150,13 @@ class Player {
   respawn() {
     this.currentRoom = this.saveRoom;
     this.hp = this.maxHp;
+    this.mp = this.maxMp;
   }
 
   fullHeal() {
     this.hp = this.maxHp;
+    this.mp = this.maxMp;
   }
 }
 
-module.exports = { Player };
+module.exports = { Player, SKILLS };
