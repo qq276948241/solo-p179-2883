@@ -1,6 +1,6 @@
 const ui = require('../utils/ui');
 const { items } = require('../data/items');
-const { SKILLS } = require('../game/player');
+const { executeSkill, getSkillDef, canCast } = require('./skills');
 
 function rand(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
@@ -50,6 +50,22 @@ function battle(player, enemy, readline, renderFull, setStatus, onEnd) {
       return Math.floor(enemyBaseDefense / 2);
     }
     return enemyBaseDefense;
+  }
+
+  function setArmorBreak(duration) {
+    armorBreakTurns = duration;
+    enemy.defense = getEnemyDefense();
+  }
+
+  function buildSkillContext() {
+    return {
+      player,
+      enemy,
+      addLog,
+      getEnemyDefense,
+      setArmorBreak,
+      checkVictoryAfterDamage
+    };
   }
 
   function renderBattle(message = '') {
@@ -257,7 +273,7 @@ function battle(player, enemy, readline, renderFull, setStatus, onEnd) {
     const skills = player.getAvailableSkills();
 
     if (skills.length === 0) {
-      addLog(ui.warning(`等级不足！需要 Lv.5 才能使用技能（当前 Lv.${player.level}）。`));
+      addLog(ui.warning(`你还没有学会任何技能（Lv.5 后自动解锁）。`));
       renderBattle();
       setTimeout(playerTurn, 700);
       return;
@@ -270,8 +286,8 @@ function battle(player, enemy, readline, renderFull, setStatus, onEnd) {
       lines.push(`  ${ui.c('MP:', ui.colors.fg.white)} ${player.mp}/${player.maxMp}`);
       lines.push('');
       skills.forEach((sk, i) => {
-        const canCast = player.mp >= sk.mpCost;
-        const costTag = canCast
+        const canCastNow = canCast(player, sk.id);
+        const costTag = canCastNow
           ? ui.c(`(${sk.mpCost} MP)`, ui.colors.fg.brightCyan)
           : ui.c(`(${sk.mpCost} MP, 不足)`, ui.colors.fg.red);
         lines.push(`  [${i + 1}] ${ui.c(sk.name, ui.colors.fg.brightMagenta)} ${costTag}  -  ${sk.desc}`);
@@ -294,38 +310,23 @@ function battle(player, enemy, readline, renderFull, setStatus, onEnd) {
         return;
       }
 
-      if (!player.useMp(skill.mpCost)) {
-        addLog(ui.warning(`MP 不足，无法施放 ${skill.name}！`));
+      const ctx = buildSkillContext();
+      const result = executeSkill(ctx, skill.id);
+
+      if (result.error === 'mp' || result.error === 'unknown') {
         renderBattle();
         setTimeout(playerTurn, 700);
         return;
       }
 
-      switch (skill.id) {
-        case 'fireball': {
-          const rawDamage = Math.floor(player.totalAttack() * 1.5);
-          const damage = Math.max(1, rawDamage - getEnemyDefense() + rand(-1, 2));
-          enemy.hp = Math.max(0, enemy.hp - damage);
-          addLog(ui.c(`🔥 你念出咒语，一枚炽热火球呼啸而出！`, ui.colors.fg.brightRed));
-          addLog(ui.c(`${skill.name} 对 ${enemy.name} 造成了 ${damage} 点灼烧伤害！`, ui.colors.fg.brightRed));
-          if (checkVictoryAfterDamage()) return;
-          break;
-        }
-        case 'heal': {
-          const healAmt = skill.healAmount;
-          const actual = Math.min(healAmt, player.maxHp - player.hp);
-          player.hp = Math.min(player.maxHp, player.hp + healAmt);
-          addLog(ui.c(`✨ 你双手结印，柔和的绿光包裹全身！`, ui.colors.fg.brightGreen));
-          addLog(ui.c(`${skill.name} 恢复了 ${actual} HP！`, ui.colors.fg.brightGreen));
-          break;
-        }
-        case 'armorBreak': {
-          armorBreakTurns = skill.duration;
-          enemy.defense = getEnemyDefense();
-          addLog(ui.c(`⚔ 你凝聚斗气，一记破甲斩凌厉劈出！`, ui.colors.fg.brightMagenta));
-          addLog(ui.c(`${skill.name} 生效！${enemy.name} 防御减半，持续 ${skill.duration} 回合。`, ui.colors.fg.brightMagenta));
-          break;
-        }
+      if (result.victory) {
+        return;
+      }
+
+      if (!result.endTurn) {
+        renderBattle();
+        setTimeout(playerTurn, 700);
+        return;
       }
 
       renderBattle();

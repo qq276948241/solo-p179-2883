@@ -5,8 +5,13 @@ const SAVE_FILE = path.join(__dirname, '..', '..', 'save.json');
 
 function saveGame(player) {
   const data = {
+    level: player.level,
+    exp: player.exp,
+    expToNext: player.expToNext,
     hp: player.hp,
     maxHp: player.maxHp,
+    mp: player.mp,
+    maxMp: player.maxMp,
     baseAttack: player.baseAttack,
     baseDefense: player.baseDefense,
     gold: player.gold,
@@ -14,6 +19,7 @@ function saveGame(player) {
     saveRoom: player.saveRoom,
     inventory: player.inventory,
     equipped: player.equipped,
+    learnedSkills: player.learnedSkills,
     createdAt: new Date().toISOString()
   };
 
@@ -33,8 +39,13 @@ function loadGame(player) {
     const raw = fs.readFileSync(SAVE_FILE, 'utf8');
     const data = JSON.parse(raw);
 
+    player.level = data.level || 1;
+    player.exp = data.exp || 0;
+    player.expToNext = data.expToNext || 50;
     player.hp = data.hp;
     player.maxHp = data.maxHp;
+    player.mp = data.mp ?? data.maxHp * 0.5;
+    player.maxMp = data.maxMp || 50;
     player.baseAttack = data.baseAttack;
     player.baseDefense = data.baseDefense;
     player.gold = data.gold;
@@ -42,6 +53,7 @@ function loadGame(player) {
     player.saveRoom = data.saveRoom || 'village_center';
     player.inventory = data.inventory || {};
     player.equipped = data.equipped || { weapon: null, shield: null };
+    player.learnedSkills = data.learnedSkills || [];
 
     return { success: true, data };
   } catch (err) {

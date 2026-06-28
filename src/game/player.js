@@ -1,30 +1,5 @@
 const { items } = require('../data/items');
-
-const SKILLS = {
-  fireball: {
-    id: 'fireball',
-    name: '火球术',
-    mpCost: 5,
-    minLevel: 5,
-    desc: '消耗 5 MP，对敌人造成 1.5 倍攻击力的火焰伤害。'
-  },
-  heal: {
-    id: 'heal',
-    name: '治疗术',
-    mpCost: 3,
-    minLevel: 5,
-    healAmount: 20,
-    desc: '消耗 3 MP，立即恢复 20 HP。'
-  },
-  armorBreak: {
-    id: 'armorBreak',
-    name: '破甲斩',
-    mpCost: 4,
-    minLevel: 5,
-    duration: 2,
-    desc: '消耗 4 MP，让敌人防御减半，效果持续 2 回合。'
-  }
-};
+const { SKILLS, allSkillDefs, getSkillDef } = require('../systems/skills');
 
 class Player {
   constructor() {
@@ -47,19 +22,54 @@ class Player {
       weapon: null,
       shield: null
     };
+    this.learnedSkills = [];
   }
 
   static expForLevel(lv) {
     return Math.floor(50 * Math.pow(1.35, lv - 1));
   }
 
+  learnSkill(skillId) {
+    const def = getSkillDef(skillId);
+    if (!def) return { success: false, reason: 'unknown' };
+    if (this.level < def.minLevel) return { success: false, reason: 'level', minLevel: def.minLevel };
+    if (this.learnedSkills.includes(skillId)) return { success: false, reason: 'known' };
+    this.learnedSkills.push(skillId);
+    return { success: true, skill: def };
+  }
+
+  unlearnSkill(skillId) {
+    const idx = this.learnedSkills.indexOf(skillId);
+    if (idx >= 0) {
+      this.learnedSkills.splice(idx, 1);
+      return true;
+    }
+    return false;
+  }
+
+  hasLearnedSkill(skillId) {
+    return this.learnedSkills.includes(skillId);
+  }
+
+  autoLearnSkillsForLevel(prevLevel, newLevel) {
+    const newlyLearned = [];
+    for (const def of allSkillDefs()) {
+      if (prevLevel < def.minLevel && newLevel >= def.minLevel && !this.hasLearnedSkill(def.id)) {
+        const r = this.learnSkill(def.id);
+        if (r.success) newlyLearned.push(def);
+      }
+    }
+    return newlyLearned;
+  }
+
   getAvailableSkills() {
-    if (this.level < 5) return [];
-    return Object.values(SKILLS);
+    return this.learnedSkills
+      .map(id => getSkillDef(id))
+      .filter(Boolean);
   }
 
   hasSkill(skillId) {
-    return this.level >= 5 && !!SKILLS[skillId];
+    return this.hasLearnedSkill(skillId);
   }
 
   useMp(amount) {
@@ -70,10 +80,12 @@ class Player {
 
   gainExp(amount) {
     const leveledUp = [];
+    const skillsLearned = [];
     this.exp += amount;
 
     while (this.exp >= this.expToNext) {
       this.exp -= this.expToNext;
+      const prevLevel = this.level;
       this.level += 1;
       this.maxHp += 20;
       this.maxMp += 10;
@@ -83,8 +95,10 @@ class Player {
       this.mp = this.maxMp;
       this.expToNext = Player.expForLevel(this.level);
       leveledUp.push(this.level);
+      const learned = this.autoLearnSkillsForLevel(prevLevel, this.level);
+      skillsLearned.push(...learned);
     }
-    return leveledUp;
+    return { levels: leveledUp, skills: skillsLearned };
   }
 
   totalAttack() {

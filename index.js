@@ -220,9 +220,8 @@ function renderDeath() {
   });
 }
 
-function renderLevelUp(levels, afterCb) {
+function renderLevelUp({ levels, skills }, afterCb) {
   const lastLv = levels[levels.length - 1];
-  const learnedSkill = lastLv >= 5 && levels.some(l => l === 5);
   renderScreen(() => {
     const lines = [
       '',
@@ -239,10 +238,11 @@ function renderLevelUp(levels, afterCb) {
       ui.center(ui.system('基础攻击 +2   基础防御 +1'), SCREEN_WIDTH * 2),
       ui.center(ui.system('HP / MP 已完全恢复！'), SCREEN_WIDTH * 2),
     ];
-    if (learnedSkill) {
+    if (skills && skills.length > 0) {
       lines.push('');
-      lines.push(ui.center(ui.c('★ 你学会了三个新技能！', ui.colors.fg.brightMagenta), SCREEN_WIDTH * 2));
-      lines.push(ui.center(ui.c('  火球术 · 治疗术 · 破甲斩', ui.colors.fg.brightMagenta), SCREEN_WIDTH * 2));
+      lines.push(ui.center(ui.c(`★ 学会了 ${skills.length} 个新技能！`, ui.colors.fg.brightMagenta), SCREEN_WIDTH * 2));
+      const names = skills.map(s => s.name).join(' · ');
+      lines.push(ui.center(ui.c(`  ${names}`, ui.colors.fg.brightMagenta), SCREEN_WIDTH * 2));
       lines.push(ui.center(ui.system('战斗中按 [5] 打开技能菜单'), SCREEN_WIDTH * 2));
     }
     lines.push('');
@@ -273,10 +273,10 @@ function triggerEncounter(room) {
       return;
     }
     if (result.victory && result.exp > 0) {
-      const levels = player.gainExp(result.exp);
+      const { levels, skills } = player.gainExp(result.exp);
       if (levels.length > 0) {
         statusMessage = `升级到 Lv.${levels[levels.length - 1]}！HP/MP 全满。`;
-        renderLevelUp(levels, () => promptMain());
+        renderLevelUp({ levels, skills }, () => promptMain());
         return;
       }
     }
