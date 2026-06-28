@@ -1,0 +1,12 @@
+{
+  "name": "project179",
+  "version": "1.0.0",
+  "description": "终端文字冒险 RPG 游戏 - Node.js",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "keywords": ["rpg", "adventure", "text-game", "terminal"],
+  "author": "",
+  "license": "ISC"
+}
