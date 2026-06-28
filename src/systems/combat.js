@@ -39,10 +39,21 @@ function battle(player, enemy, readline, renderFull, setStatus, onEnd) {
   let turn = 1;
   let expGained = 0;
   let goldGained = 0;
+  let battleEnded = false;
+
+  function finishBattle(payload) {
+    if (battleEnded) return;
+    battleEnded = true;
+    onEnd(payload);
+  }
 
   function addLog(text) {
     battleLog.push(text);
     if (battleLog.length > 8) battleLog.shift();
+  }
+
+  function enemyAlive() {
+    return !battleEnded && enemy.hp > 0;
   }
 
   function getEnemyDefense() {
@@ -115,7 +126,7 @@ function battle(player, enemy, readline, renderFull, setStatus, onEnd) {
   }
 
   function enemyTurn() {
-    if (enemy.hp <= 0) return;
+    if (battleEnded || enemy.hp <= 0) return;
 
     if (armorBreakTurns > 0) {
       armorBreakTurns -= 1;
@@ -141,7 +152,7 @@ function battle(player, enemy, readline, renderFull, setStatus, onEnd) {
     if (player.hp <= 0) {
       renderBattle();
       setTimeout(() => {
-        onEnd({ victory: false, died: true });
+        finishBattle({ victory: false, died: true });
       }, 800);
       return;
     }
@@ -178,7 +189,7 @@ function battle(player, enemy, readline, renderFull, setStatus, onEnd) {
       setStatus(`击败了 ${enemy.name}！获得 ${goldDrop} 金币和 ${expGained} 经验。`);
       renderBattle();
       setTimeout(() => {
-        onEnd({ victory: true, died: false, goldDrop: goldGained, exp: expGained });
+        finishBattle({ victory: true, died: false, goldDrop: goldGained, exp: expGained });
       }, 1800);
       return true;
     }
@@ -186,6 +197,11 @@ function battle(player, enemy, readline, renderFull, setStatus, onEnd) {
   }
 
   function doAttack() {
+    if (battleEnded) return;
+    if (!enemyAlive()) {
+      checkVictoryAfterDamage();
+      return;
+    }
     const damage = calcDamage(player.totalAttack(), getEnemyDefense());
     enemy.hp = Math.max(0, enemy.hp - damage);
     addLog(ui.c(`你挥出一击，对 ${enemy.name} 造成了 ${damage} 点伤害！`, ui.colors.fg.brightCyan));
@@ -197,6 +213,11 @@ function battle(player, enemy, readline, renderFull, setStatus, onEnd) {
   }
 
   function doDefend() {
+    if (battleEnded) return;
+    if (!enemyAlive()) {
+      checkVictoryAfterDamage();
+      return;
+    }
     playerDefending = true;
     addLog(ui.c('你摆出防御姿态，准备迎接下一次攻击。', ui.colors.fg.brightBlue));
     renderBattle();
@@ -204,6 +225,11 @@ function battle(player, enemy, readline, renderFull, setStatus, onEnd) {
   }
 
   function showItems() {
+    if (battleEnded) return;
+    if (!enemyAlive()) {
+      checkVictoryAfterDamage();
+      return;
+    }
     const herbItems = [];
     for (const id in player.inventory) {
       const it = items[id];
@@ -233,6 +259,7 @@ function battle(player, enemy, readline, renderFull, setStatus, onEnd) {
     });
 
     readline.question('', (ans) => {
+      if (battleEnded) return;
       const idx = parseInt(ans);
       if (idx === 0 || isNaN(idx)) {
         playerTurn();
@@ -244,10 +271,17 @@ function battle(player, enemy, readline, renderFull, setStatus, onEnd) {
         return;
       }
 
-      const heal = selected.item.effect.heal || 0;
-      player.hp = Math.min(player.maxHp, player.hp + heal);
+      const healMax = selected.item.effect.heal || 0;
+      const actual = Math.min(healMax, Math.max(0, player.maxHp - player.hp));
+      player.hp = Math.min(player.maxHp, player.hp + actual);
       player.inventory[selected.id] -= 1;
-      addLog(ui.item(`使用了 ${selected.item.name}，恢复 ${heal} HP。`));
+      if (actual <= 0) {
+        addLog(ui.system(`使用了 ${selected.item.name}，但你本就满血，效果甚微。`));
+      } else if (actual < healMax) {
+        addLog(ui.item(`使用了 ${selected.item.name}，恢复 ${actual} HP。(上限已满)`));
+      } else {
+        addLog(ui.item(`使用了 ${selected.item.name}，恢复 ${actual} HP。`));
+      }
       setStatus(`使用了 ${selected.item.name}。`);
       renderBattle();
       setTimeout(enemyTurn, 700);
@@ -255,21 +289,34 @@ function battle(player, enemy, readline, renderFull, setStatus, onEnd) {
   }
 
   function doFlee() {
+    if (battleEnded) return;
+    if (!enemyAlive()) {
+      checkVictoryAfterDamage();
+      return;
+    }
     if (Math.random() < 0.55) {
       addLog(ui.c('你成功逃脱了战斗！', ui.colors.fg.brightYellow));
       setStatus(`从 ${enemy.name} 的战斗中逃脱。`);
       renderBattle();
       setTimeout(() => {
-        onEnd({ victory: false, died: false, fled: true });
+        finishBattle({ victory: false, died: false, fled: true });
       }, 800);
     } else {
       addLog(ui.c('逃跑失败！敌人挡住了你的去路。', ui.colors.fg.magenta));
       renderBattle();
-      setTimeout(enemyTurn, 700);
+      setTimeout(() => {
+        if (battleEnded) return;
+        enemyTurn();
+      }, 700);
     }
   }
 
   function showSkills() {
+    if (battleEnded) return;
+    if (!enemyAlive()) {
+      checkVictoryAfterDamage();
+      return;
+    }
     const skills = player.getAvailableSkills();
 
     if (skills.length === 0) {
@@ -299,6 +346,7 @@ function battle(player, enemy, readline, renderFull, setStatus, onEnd) {
     });
 
     readline.question('', (ans) => {
+      if (battleEnded) return;
       const idx = parseInt(ans);
       if (idx === 0 || isNaN(idx)) {
         playerTurn();
@@ -319,7 +367,8 @@ function battle(player, enemy, readline, renderFull, setStatus, onEnd) {
         return;
       }
 
-      if (result.victory) {
+      if (result.alreadyDead || result.victory) {
+        checkVictoryAfterDamage();
         return;
       }
 
@@ -330,14 +379,27 @@ function battle(player, enemy, readline, renderFull, setStatus, onEnd) {
       }
 
       renderBattle();
-      setTimeout(enemyTurn, 700);
+      setTimeout(() => {
+        if (battleEnded) return;
+        enemyTurn();
+      }, 700);
     });
   }
 
   function playerTurn() {
+    if (battleEnded) return;
+    if (enemy.hp <= 0) {
+      checkVictoryAfterDamage();
+      return;
+    }
     renderBattle();
 
     readline.question('', (ans) => {
+      if (battleEnded) return;
+      if (enemy.hp <= 0) {
+        checkVictoryAfterDamage();
+        return;
+      }
       const choice = ans.trim().toLowerCase();
 
       switch (choice) {

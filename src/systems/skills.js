@@ -13,6 +13,10 @@ const SKILLS = {
     desc: '消耗 5 MP，对敌人造成 1.5 倍攻击力的火焰伤害。',
     execute(ctx) {
       const { player, enemy, addLog, getEnemyDefense, checkVictoryAfterDamage } = ctx;
+      if (enemy.hp <= 0) {
+        addLog(ui.system(`${enemy.name} 已经倒下，无需再攻击。`));
+        return { endTurn: true, victory: true, alreadyDead: true };
+      }
       const rawDamage = Math.floor(player.totalAttack() * 1.5);
       const damage = Math.max(1, rawDamage - getEnemyDefense() + rand(-1, 2));
       enemy.hp = Math.max(0, enemy.hp - damage);
@@ -35,10 +39,21 @@ const SKILLS = {
     execute(ctx) {
       const { player, addLog } = ctx;
       const healAmt = this.healAmount;
-      const actual = Math.min(healAmt, player.maxHp - player.hp);
-      player.hp = Math.min(player.maxHp, player.hp + healAmt);
+      const missing = Math.max(0, player.maxHp - player.hp);
+      const actual = Math.min(healAmt, missing);
+
+      if (actual <= 0) {
+        addLog(ui.system(`${this.name} 的光芒一闪而过，但你本就状态极佳，无需治疗。`));
+        return { endTurn: true, victory: false, noHeal: true };
+      }
+
+      player.hp = Math.min(player.maxHp, player.hp + actual);
       addLog(ui.c(`✨ 你双手结印，柔和的绿光包裹全身！`, ui.colors.fg.brightGreen));
-      addLog(ui.c(`${this.name} 恢复了 ${actual} HP！`, ui.colors.fg.brightGreen));
+      if (actual < healAmt) {
+        addLog(ui.c(`${this.name} 完全治愈了你的伤势，恢复了 ${actual} HP！(上限已满)`, ui.colors.fg.brightGreen));
+      } else {
+        addLog(ui.c(`${this.name} 恢复了 ${actual} HP！`, ui.colors.fg.brightGreen));
+      }
       return { endTurn: true, victory: false };
     }
   },
@@ -52,6 +67,10 @@ const SKILLS = {
     desc: '消耗 4 MP，让敌人防御减半，效果持续 2 回合。',
     execute(ctx) {
       const { enemy, addLog, setArmorBreak } = ctx;
+      if (enemy.hp <= 0) {
+        addLog(ui.system(`${enemy.name} 已经倒下，无需再用破甲。`));
+        return { endTurn: true, victory: true, alreadyDead: true };
+      }
       setArmorBreak(this.duration);
       addLog(ui.c(`⚔ 你凝聚斗气，一记破甲斩凌厉劈出！`, ui.colors.fg.brightMagenta));
       addLog(ui.c(`${this.name} 生效！${enemy.name} 防御减半，持续 ${this.duration} 回合。`, ui.colors.fg.brightMagenta));
@@ -83,11 +102,19 @@ function executeSkill(ctx, skillId) {
     ctx.addLog(ui.warning(`未知技能: ${skillId}`));
     return { endTurn: false, victory: false, error: 'unknown' };
   }
+  if (ctx.enemy && ctx.enemy.hp <= 0) {
+    ctx.addLog(ui.system(`${ctx.enemy.name} 已经被击败了。`));
+    return { endTurn: true, victory: true, alreadyDead: true };
+  }
   if (!ctx.player.useMp(def.mpCost)) {
     ctx.addLog(ui.warning(`MP 不足，无法施放 ${def.name}！`));
     return { endTurn: false, victory: false, error: 'mp' };
   }
-  return def.execute.call(def, ctx) || { endTurn: true, victory: false };
+  const result = def.execute.call(def, ctx) || { endTurn: true, victory: false };
+  if (result.noHeal && ctx.player) {
+    ctx.player.mp += def.mpCost;
+  }
+  return result;
 }
 
 function allSkillDefs() {
